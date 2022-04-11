@@ -44,3 +44,5 @@ def board_pixel_size(app) -> (int, int):
 def galaga_redrawAll(app, canvas):
     for starship in app.galaga.game.starships:
         starship.drawOn(app, canvas)
+    for shot in app.galaga.game.shots:
+        shot.drawOn(app, canvas)
