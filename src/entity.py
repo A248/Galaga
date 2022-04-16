@@ -5,23 +5,24 @@ class Shape(object):
     def __init__(self, id: str, dimensions: (int, int)):
         self.id = id
         self.dimensions = dimensions
-        self.image = None
+        self.pilImage = None
         self.background_color = (0, 0, 0)
 
     def set_image_id(self, newId) -> None:
         self.id = newId
-        self.image = None
+        self.pilImage = None
 
     def get_tkinter_image(self, app):
-        image = app.galaga.gallery.get_tkinter_image(app, self.id, self.dimensions)
-        self.image = image
-        return image
+        pilImage = app.galaga.gallery.get_pil_image(app, self.id, self.dimensions)
+        tkinterImage = app.galaga.gallery.get_tkinter_image(app, self.id, self.dimensions, pilImage)
+        self.pilImage = pilImage
+        return tkinterImage
 
     def rectangular_dimensions(self):
         return self.dimensions
 
-    def has_point(relativePosition: (int, int)) -> bool:
-        image = self.image
+    def has_point(self, relativePosition: (int, int)) -> bool:
+        image = self.pilImage
         if image == None:
             # We haven't drawn yet. This can happen in two scenarios:
             # 1. The game has just begun
@@ -37,7 +38,7 @@ class Shape(object):
         minX = relativePositionX * boardPixelWidth
         maxX = minX + boardPixelWidth - 1
         minY = relativePositionY * boardPixelHeight
-        maxY = maxY + boardPixelHeight - 1
+        maxY = minY + boardPixelHeight - 1
         # First check the 4 corners: fast-path
         background_color = self.background_color
         for checkCornerX in [minX, maxX]:
@@ -72,7 +73,7 @@ class LifeStatus(object):
         newAnimationStage = self.deathAnimationTick // self.deathAnimationSpeed
         if (formerAnimationStage != newAnimationStage and
             newAnimationStage < LifeStatus.MAX_DEATH_ANIMATION):
-            shape.set_image_id("entity_death_" + str(newAnimationStage))
+            shape.set_image_id("death-animations/" + str(1 + newAnimationStage))
 
     def is_finished(self):
         animationStage = self.deathAnimationTick // self.deathAnimationSpeed
@@ -94,8 +95,9 @@ class Entity(object):
     def rectangular_bounding_box(self, atPosition = None):
         if atPosition == None:
             atPosition = self.position
-        shapeTopLeft = self.position
-        shapeBottomRight = shapeTopLeft + Position(*self.shape.rectangular_dimensions())
+        (boxWidth, boxHeight) = self.shape.rectangular_dimensions()
+        shapeTopLeft = atPosition - Position(boxWidth / 2, boxHeight / 2)
+        shapeBottomRight = shapeTopLeft + Position(boxWidth, boxHeight)
         return (shapeTopLeft, shapeBottomRight)
 
     def collides_with(self, movableShot) -> bool:
@@ -106,7 +108,7 @@ class Entity(object):
         if shotPosition.x > shapeBottomRight.x or shotPosition.y > shapeBottomRight.y:
             return False
         relativePosition = (shotPosition.x - shapeTopLeft.x, shotPosition.y - shapeTopLeft.y)
-        return shape.has_point(relativePosition)
+        return self.shape.has_point(relativePosition)
 
     def could_be_located_at(self, newPosition) -> None:
         (shapeTopLeft, shapeBottomRight) = self.rectangular_bounding_box(newPosition)
@@ -115,7 +117,7 @@ class Entity(object):
     def destroy(self) -> None:
         self.lifeStatus.alive = False
         # From https://www.hiclipart.com/free-transparent-background-png-clipart-beklu
-        self.shape.set_image_id("entity_death_0")
+        self.shape.set_image_id("death-animations/0")
 
     def tick(self) -> None:
         self.lifeStatus.tick_and_adjust_shape(self.shape)
@@ -145,9 +147,17 @@ class Starship(Entity):
         return Shot(self.position, (0, -1), lambda eType: eType == Alien)
 
 class Alien(Entity):
-    def __init__(self, initialPosition, soul):
-        super().__init__(initialPosition, soul.shape(), LifeStatus(1))
-        self.soul = soul
+    def __init__(self, initialPosition, positionAtRest, alienSoul):
+        super().__init__(initialPosition, alienSoul.shape, LifeStatus(1))
+        self.positionAtRest = positionAtRest
+        self.alienSoul = alienSoul
+        alienSoul.initialize_entity(self)
+
+    def dance_along(self) -> None:
+        self.alienSoul.dance_entity(self)
+
+    def is_incoming(self) -> bool:
+        return self.alienSoul.is_entity_incoming(self)
 
     def __repr__(self):
         return f"Alien(position={self.position})"
@@ -156,7 +166,7 @@ class Alien(Entity):
         return Shot(self.position, (0, 1), lambda eType: eType == Starship)
 
     def score_when_killed(self, currentLevel: int) -> int:
-        return self.soul.score_when_killed(currentLevel)
+        return self.alienSoul.score_when_killed(currentLevel)
 
 class Shot(object):
     def __init__(self, initialPosition, direction, affectsWhichEntities):

@@ -26,6 +26,16 @@ class Position(object):
     def __add__(self, rhs):
         return Position(self.x + rhs.x, self.y + rhs.y)
 
+    # Subtracts as position from this one, yielding a difference
+    def __sub__(self, rhs):
+        return Position(self.x - rhs.x, self.y - rhs.y)
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, Position):
+            return False
+        EPSILON = 10**-8
+        return abs(self.x - other.x) < EPSILON and abs(self.y - other.y) < EPSILON
+
     def is_out_of_bounds(self) -> bool:
         return (self.x < 0 or self.y < 0 or
                 self.x > MAX_PIXEL_X or self.y > MAX_PIXEL_Y)
@@ -36,3 +46,11 @@ class Position(object):
 # Returns (width, height) of pixel size
 def board_pixel_size(app) -> (int, int):
     return (app.width / MAX_PIXEL_X, app.height / MAX_PIXEL_Y)
+
+# Tests the Position class
+def testPosition() -> None:
+    print("Testing testPosition()...")
+    position1 = Position(1, 1)
+    almostOne = 0.9999999999
+    assert position1 == Position(almostOne, almostOne)
+    print("Passed")

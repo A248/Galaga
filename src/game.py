@@ -10,6 +10,7 @@ class Game(object):
         self.incomingAliens = set()
         self.shots = set()
         self.add_starship(initialStarship)
+        self.moveShotsByPixels = 8
 
     def add_starship(self, starship) -> None:
         self.starships.append(starship)
@@ -41,19 +42,11 @@ class Game(object):
         starships = self.starships
         if starships == []:
             return
-        if xshift > 0 and not starships[-1].can_move_by(xshift):
-            # Prevent moving off the right edge
-            return
-        if xshift < 0 and not starships[0].can_move_by(xshift):
-            # Prevent moving off the left edge
-            return
+        for starship in starships:
+            if not starship.can_move_by(xshift):
+                return
         for starship in starships:
             starship.move_by(xshift)
-
-    def tick(self, app):
-        self.cleanup_entities()
-        self.dance_aliens()
-        self.move_all_shots(app)
 
     def cleanup_entities(self) -> None:
         def cleanup_certain_entities(entities) -> None:
@@ -66,9 +59,15 @@ class Game(object):
         cleanup_certain_entities(self.incomingAliens)
 
     def dance_aliens(self):
-        for incomingAlien in self.incomingAliens:
+        for incomingAlien in copy.copy(self.incomingAliens):
             if incomingAlien.is_alive():
                 incomingAlien.dance_along()
+                if not incomingAlien.is_incoming():
+                    self.incomingAliens.remove(incomingAlien)
+                    self.aliens.add(incomingAlien)
+        for alien in copy.copy(self.aliens):
+            if alien.is_alive():
+                alien.dance_along()
 
     def move_shots(self, collidables, collidable_type, collision_handler) -> None:
         for shot in copy.copy(self.shots):
