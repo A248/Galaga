@@ -1,61 +1,45 @@
 
-from board import Position
+import math
+from board import Position, Direction, LineSegment, CollisionPath, DrawnImage
+from image_cache import ImageResizer, ImageRotator, CombinedImageHandler
 
 class Shape(object):
     def __init__(self, id: str, dimensions: (int, int)):
         self.id = id
         self.dimensions = dimensions
         self.pilImage = None
-        self.background_color = (0, 0, 0)
+        self.backgroundColor = None
+        self.rotation = Direction(math.pi / 2)
 
     def set_image_id(self, newId) -> None:
         self.id = newId
         self.pilImage = None
 
+    def set_rotation(self, newRotation) -> None:
+        self.rotation = newRotation
+        self.pilImage = None
+
     def get_tkinter_image(self, app):
-        pilImage = app.galaga.gallery.get_pil_image(app, self.id, self.dimensions)
-        tkinterImage = app.galaga.gallery.get_tkinter_image(app, self.id, self.dimensions, pilImage)
+        imageHandler = CombinedImageHandler(ImageRotator(self.rotation), ImageResizer(self.dimensions))
+        pilImage = app.galaga.gallery.get_pil_image(app, self.id, imageHandler)
+        tkinterImage = app.galaga.gallery.get_tkinter_image(app, self.id, imageHandler, pilImage)
         self.pilImage = pilImage
+        self.backgroundColor = app.backgroundColor
         return tkinterImage
 
     def rectangular_dimensions(self):
         return self.dimensions
 
-    def has_point(self, relativePosition: (int, int)) -> bool:
-        image = self.pilImage
-        if image == None:
+    def collides_with_path(self, currentPosition, collisionPath) -> bool:
+        pilImage = self.pilImage
+        if pilImage == None:
             # We haven't drawn yet. This can happen in two scenarios:
             # 1. The game has just begun
             # 2. We are in an image transition
             # In either case, the shape hasn't rendered yet
             return False
-        (relativePositionX, relativePositionY) = relativePosition
-        # Convert our relative pixel-scale position to image scale
-        (dimensionsWidth, dimensionsHeight) = self.dimensions
-        boardPixelWidth = image.width / dimensionsWidth
-        boardPixelHeight = image.height / dimensionsHeight
-        # Calculate the edges of the square inside the image we need to check
-        minX = relativePositionX * boardPixelWidth
-        maxX = minX + boardPixelWidth - 1
-        minY = relativePositionY * boardPixelHeight
-        maxY = minY + boardPixelHeight - 1
-        # First check the 4 corners: fast-path
-        background_color = self.background_color
-        for checkCornerX in [minX, maxX]:
-            for checkCornerY in [minY, maxY]:
-                if image.getpixel((checkCornerX, checkCornerY)) != background_color:
-                    return True
-        # We only need to check the square's outline, not the entire square
-        # This saves a significant amount of pixel checks
-        for checkColumn in [minX, maxX]:
-            for checkY in range(minY + 1, maxY):
-                if image.getpixel((checkColumn, checkY)) != background_color:
-                    return True
-        for checkRow in [minY, maxY]:
-            for checkX in range(minX + 1, maxX):
-                if image.getpixel((checkX, checkRow)) != background_color:
-                    return True
-        return False
+        image = DrawnImage(currentPosition, pilImage, self.dimensions, self.backgroundColor)
+        return collisionPath.intersects_with_image(image)
 
 class LifeStatus(object):
     MAX_DEATH_ANIMATION = 20
@@ -79,6 +63,7 @@ class LifeStatus(object):
         animationStage = self.deathAnimationTick // self.deathAnimationSpeed
         return animationStage >= LifeStatus.MAX_DEATH_ANIMATION
 
+
 class Entity(object):
     def __init__(self, initialPosition, shape, lifeStatus):
         self.position = initialPosition
@@ -100,15 +85,8 @@ class Entity(object):
         shapeBottomRight = shapeTopLeft + Position(boxWidth, boxHeight)
         return (shapeTopLeft, shapeBottomRight)
 
-    def collides_with(self, movableShot) -> bool:
-        shotPosition = movableShot.position
-        (shapeTopLeft, shapeBottomRight) = self.rectangular_bounding_box()
-        if shotPosition.x < shapeTopLeft.x or shotPosition.y < shapeTopLeft.y:
-            return False
-        if shotPosition.x > shapeBottomRight.x or shotPosition.y > shapeBottomRight.y:
-            return False
-        relativePosition = (shotPosition.x - shapeTopLeft.x, shotPosition.y - shapeTopLeft.y)
-        return self.shape.has_point(relativePosition)
+    def collides_with(self, collisionPath) -> bool:
+        return self.shape.collides_with_path(self.position, collisionPath)
 
     def could_be_located_at(self, newPosition) -> None:
         (shapeTopLeft, shapeBottomRight) = self.rectangular_bounding_box(newPosition)
@@ -117,7 +95,7 @@ class Entity(object):
     def destroy(self) -> None:
         self.lifeStatus.alive = False
         # From https://www.hiclipart.com/free-transparent-background-png-clipart-beklu
-        self.shape.set_image_id("death-animations/0")
+        self.shape.set_image_id("death-animations/1")
 
     def tick(self) -> None:
         self.lifeStatus.tick_and_adjust_shape(self.shape)
@@ -144,7 +122,7 @@ class Starship(Entity):
         return f"Starship(position={self.position})"
 
     def create_shot(self):
-        return Shot(self.position, (0, -1), lambda eType: eType == Alien)
+        return Shot(self.position, (0, 1), lambda eType: eType == Alien)
 
 class Alien(Entity):
     def __init__(self, initialPosition, positionAtRest, alienSoul):
@@ -163,10 +141,13 @@ class Alien(Entity):
         return f"Alien(position={self.position})"
 
     def create_shot(self):
-        return Shot(self.position, (0, 1), lambda eType: eType == Starship)
+        return Shot(self.position, (0, -1), lambda eType: eType == Starship)
 
     def score_when_killed(self, currentLevel: int) -> int:
         return self.alienSoul.score_when_killed(currentLevel)
+
+    def shot_creation_chance(self) -> int:
+        return self.alienSoul.shot_creation_chance()
 
 class Shot(object):
     def __init__(self, initialPosition, direction, affectsWhichEntities):
@@ -177,10 +158,16 @@ class Shot(object):
     def affects_entity_type(self, entityType) -> bool:
         return self.affectsWhichEntities(entityType)
 
-    def move(self) -> None:
-        self.position += Position(*self.direction)
+    def move(self, byPixels: int):
+        oldPosition = self.position
+        newPosition = oldPosition + Position(*self.direction) * byPixels
+        self.position = newPosition
+        return CollisionPath(oldPosition, newPosition)
 
     def draw_on(self, app, canvas) -> None:
         (x1, y1) = self.position.to_canvas_coords(app)
         (x2, y2) = (self.position + Position(1, 1)).to_canvas_coords(app)
         canvas.create_rectangle(x1, y1, x2, y2, fill = "red", outline = "red")
+
+    def tick(self) -> None:
+        pass

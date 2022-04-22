@@ -1,7 +1,7 @@
 
 
 import board
-from cache import Cache
+from image_cache import Cache
 from PIL import Image, ImageTk
 
 class Gallery(object):
@@ -13,29 +13,24 @@ class Gallery(object):
         self.tkImageCache = Cache()
 
     def get_raw_pil_image(self, id: str):
+        # Use of Image.open() taken from cmu_112_graphics
         return self.rawPilImageCache.get_or_load(id, lambda id: Image.open(f"{self.imageDir}/{id}.png"))
 
-    def get_pil_image(self, app, id: str, dimensions: (int, int)):
-        def load_pil_image(id: str):
+    def get_pil_image(self, app, id: str, handler):
+        def load_pil_image(idAndHandler):
+            (id, handler) = idAndHandler
             pilImage = self.get_raw_pil_image(id)
-            (originalWidth, originalHeight) = pilImage.size
-            (targetHeightInPixels, targetWidthInPixels) = dimensions
-            (pixelWidth, pixelHeight) = board.board_pixel_size(app)
-            # Scale width and height
-            newHeight = pixelHeight * targetHeightInPixels
-            newWidth = pixelWidth * targetWidthInPixels
-            # Use of resize() taken from cmu_112_graphics
-            pilImage = pilImage.resize((round(newWidth), round(newHeight)), resample=Image.ANTIALIAS)
-            return pilImage
-        return self.pilImageCache.get_or_load(id, load_pil_image)
+            return handler.handle_image(app, pilImage)
+        return self.pilImageCache.get_or_load((id, handler), load_pil_image)
 
-    def get_tkinter_image(self, app, id: str, dimensions: (int, int), pilImage = None):
-        def load_tkinter_image(id: str):
+    def get_tkinter_image(self, app, id: str, handler, pilImage = None):
+        def load_tkinter_image(idAndHandler):
+            (id, handler) = idAndHandler
             nonlocal pilImage
             if pilImage == None:
-                pilImage = self.get_pil_image(app, id, dimensions)
+                pilImage = self.get_pil_image(app, id, handler)
             return ImageTk.PhotoImage(pilImage)
-        return self.tkImageCache.get_or_load(id, load_tkinter_image)
+        return self.tkImageCache.get_or_load((id, handler), load_tkinter_image)
 
 def galaga_sizeChanged(app):
     # Purge tkinter image and pil image cache, but NOT raw pil image cache
@@ -43,8 +38,18 @@ def galaga_sizeChanged(app):
     gallery.pilImageCache.purge()
     gallery.tkImageCache.purge()
 
+def rgb_to_hex(rgb: (int, int, int)):
+    def format_hex(value: int) -> str:
+        return hex(value)[2:]
+    (r, g, b) = rgb
+    (r, g, b) = (format_hex(r), format_hex(g), format_hex(b))
+    return f"#{r}{g}{b}"
+
 def galaga_redrawAll(app, canvas):
-    game = app.galaga.game
+    canvas.create_rectangle(0, 0, app.width, app.height,
+                            fill = rgb_to_hex(app.backgroundColor))
+    galaga = app.galaga
+    game = galaga.game
     for drawableEntity in game.drawableEntities:
         drawableEntity.draw_on(app, canvas)
     # Make sure to draw the aliens in the correct order
@@ -53,6 +58,9 @@ def galaga_redrawAll(app, canvas):
         # Draw the alive ones before the dead ones to show explosions in background
         for liveStatus in [True, False]:
             draw_aliens(app, canvas, alienGroup, liveStatus)
+    titleOverlay = galaga.title_overlay()
+    if titleOverlay != None:
+        canvas.create_text(app.width / 2, app.height / 2, text = titleOverlay, fill = "white")
 
 def draw_aliens(app, canvas, aliens: set, alive: bool) -> None:
     for alien in aliens:
@@ -60,11 +68,17 @@ def draw_aliens(app, canvas, aliens: set, alive: bool) -> None:
             alien.draw_on(app, canvas)
 
 def galaga_keyPressed(app, event) -> None:
-    game = app.galaga.game
+    galaga = app.galaga
+    if galaga.stop_controls():
+        return
     key = event.key
     if key == 'Right':
-        game.move_each_starship(1)
+        galaga.game.move_each_starship(1)
     elif key == 'Left':
-        game.move_each_starship(-1)
-    elif key == 'Space':
-        game.fire_starship_shot()
+        galaga.game.move_each_starship(-1)
+
+def galaga_mousePressed(app, event) -> None:
+    galaga = app.galaga
+    if galaga.stop_controls():
+        return
+    galaga.game.fire_starship_shot()
