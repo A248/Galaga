@@ -4,10 +4,18 @@ The classic game remade in Python. This is very much a work in progress but will
 
 ### Instructions
 
+First clone the repository.
+
+```bash
+git clone https://github.com/A248/Galaga.git && cd Galaga
+```
+
 Launch with:
 ```bash
 python src/galaga.py
 ```
+
+Required libraries: PIL.
 
 ### cmu_112_graphics
 
