@@ -1,5 +1,5 @@
 
-import math
+import math, random
 from board import Position, Direction, LineSegment, CollisionPath, DrawnImage
 from image_cache import ImageResizer, ImageRotator, CombinedImageHandler
 
@@ -146,7 +146,8 @@ class Alien(Entity):
         return f"Alien(position={self.position})"
 
     def create_shot(self):
-        return Shot(self.position, (0, -1), lambda eType: eType == Starship)
+        xdirection = (random.random() - 0.5) / 4
+        return Shot(self.position, (xdirection, -1), lambda eType: eType == Starship)
 
     def score_when_killed(self, currentLevel: int) -> int:
         return self.alienSoul.score_when_killed(currentLevel)

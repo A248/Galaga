@@ -17,6 +17,8 @@ python src/galaga.py
 
 Required libraries: PIL.
 
+No shortcut commands exist.
+
 ### cmu_112_graphics
 
 Please note that cmu_112_graphics.py is not my copyright. Although I have written permission to use it here, I am not aware of its license.

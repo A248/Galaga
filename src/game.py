@@ -115,6 +115,7 @@ class Game(object):
                     collidable.destroy()
                     collision_handler(shot, collidable)
                     self.remove_shot(shot)
+                    break
 
     def move_all_shots(self, app):
         galaga = app.galaga

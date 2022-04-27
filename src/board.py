@@ -192,24 +192,22 @@ class CollisionPath(object):
         (slope, intercept) = segment.slope_and_intercept()
         if slope == None:
             scanX = intercept
-            for scanY in range(math.ceil(scanMinY), math.floor(scanMaxY)):
+            for scanY in range(math.floor(scanMinY), math.ceil(scanMaxY)):
                 if image.position_is_part_of_image(scanX, scanY):
                     return True
         else:
-            for scanX in range(math.ceil(scanMinX), math.floor(scanMaxX)):
+            for scanX in range(math.floor(scanMinX), math.ceil(scanMaxX)):
                 scanY = slope * scanX + intercept
-                if image.assertions:
-                    assert scanY <= scanMaxY and scanY >= scanMinY
                 if image.position_is_part_of_image(scanX, scanY):
                     return True
         return False
 
 class DrawnImage(object):
-    def __init__(self, pilImage, boundingBox, backgroundColor, assertions = True):
+    def __init__(self, pilImage, boundingBox, backgroundColor, assertions = False):
         self.pilImage = pilImage
         self.boundingBox = boundingBox
         self.backgroundColor = backgroundColor
-        self.assertions = True
+        self.assertions = assertions
 
     def position_is_part_of_image(self, positionX: int, positionY: int) -> bool:
         image = self.pilImage
@@ -217,8 +215,10 @@ class DrawnImage(object):
         (width, height) = (boxTopRight.x - boxBottomLeft.x, boxTopRight.y - boxBottomLeft.y)
         (imageWidth, imageHeight) = (image.width -1, image.height - 1)
         (relativeX, relativeY) = (positionX - boxBottomLeft.x, positionY - boxBottomLeft.y)
-        assert relativeX <= width and relativeX >= 0
-        assert relativeY <= height and relativeY >= 0
+        if ((relativeX > width or relativeX < 0) or
+            (relativeY > height or relativeY < 0)):
+            # Can happen due to rounding
+            return False
         pixelX = (relativeX / width) * imageWidth
         pixelY = (relativeY / height) * imageHeight
         # Up is down
@@ -243,12 +243,4 @@ def testLineSegment() -> None:
     print("Testing testLineSegment()...")
     segment = LineSegment(Position(0, 0), Position(3, 6))
     assert segment.max_min_bounds() == ((3, 0), (6, 0))
-    # Already within the bound
-    #assertEquals(segment, segment.test_fit_within(((-1, -1), (4, 7))))
-    # X-bound to X-bound
-    #assertEquals(LineSegment(Position(1, 2), Position(2, 4)), segment.test_fit_within(((1, -5), (2, 10))))
-    # Y-bound to Y-bound
-    #assert segment.test_fit_within(((-5, 1), (10, 2))) == LineSegment(Position(0.5, 1), Position(1, 2))
-    # X-bound to Y-bound
-    #assert segment.test_fit_within(((1, -5), (10, 3))) == LineSegment(Position(1, 2), Position(1.5, 3))
     print("Passed")

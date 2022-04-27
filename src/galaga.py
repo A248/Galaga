@@ -30,13 +30,15 @@ class Galaga(object):
         if game.regulator.should_spawn_aliens() and len(game.aliens) == 0:
             waitingAliens = self.waitingAliens
             if len(waitingAliens) == 0:
-                self.state = 2
+                # Don't end the game if we already died
+                if self.state == 0:
+                    self.state = 2
                 return
             nextUp = waitingAliens.pop()
             for alien in nextUp(self):
                 self.game.add_alien(alien)
             self.currentLevel += 1
-            self.score += 2
+            self.score += 10
 
     def game_over(self) -> None:
         self.state = 1
@@ -60,13 +62,12 @@ def main():
     waitingAliens = [
         lambda galaga: [ gen_bee(Position(x, 220)) for x in range(32, 200, 32) ] + [ gen_boss(Position(112, 250), galaga) ],
         lambda galaga: [ gen_bee(Position(x, 220)) for x in range(32, 200, 64) ],
-        lambda galaga: [ gen_bee(Position(32, 220)) ],
-        lambda galaga: [ gen_boss(Position(112, 250), galaga) ]
+        lambda galaga: [ gen_bee(Position(32, 220)) ]
     ]
     starship = Starship(Position(112, 15))
     galaga = Galaga(Game(GameplayRegulator(), starship), Gallery("images"), waitingAliens)
-    app = runApp(fnPrefix = 'galaga_', autorun = False)
-    app.timerDelay = 50 # 20 ticks per second
+    app = runApp(fnPrefix = 'galaga_', autorun = False, mvcCheck = False, logDrawingCalls = False)
+    app.timerDelay = 10 # 100 ticks per second
     app.backgroundColor = (0, 0, 0)
     app.galaga = galaga
     app.run()
