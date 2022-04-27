@@ -46,10 +46,13 @@ def rgb_to_hex(rgb: (int, int, int)):
     return f"#{r}{g}{b}"
 
 def galaga_redrawAll(app, canvas):
-    canvas.create_rectangle(0, 0, app.width, app.height,
-                            fill = rgb_to_hex(app.backgroundColor))
     galaga = app.galaga
     game = galaga.game
+    canvas.create_rectangle(0, 0, app.width, app.height,
+                            fill = rgb_to_hex(app.backgroundColor))
+    canvas.create_text(0, 0,
+                        text = f"Level: {galaga.currentLevel}  Score: {galaga.score}",
+                        fill = "white", anchor = "nw")
     for drawableEntity in game.drawableEntities:
         drawableEntity.draw_on(app, canvas)
     # Make sure to draw the aliens in the correct order
@@ -76,6 +79,11 @@ def galaga_keyPressed(app, event) -> None:
         galaga.game.move_each_starship(1)
     elif key == 'Left':
         galaga.game.move_each_starship(-1)
+    elif key == 't' and galaga.game.regulator.isDebugging:
+        galaga.tick(app)
+    elif key == 'g':
+        regulator = galaga.game.regulator
+        regulator.isDebugging = not regulator.isDebugging
 
 def galaga_mousePressed(app, event) -> None:
     galaga = app.galaga

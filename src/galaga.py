@@ -36,6 +36,7 @@ class Galaga(object):
             for alien in nextUp(self):
                 self.game.add_alien(alien)
             self.currentLevel += 1
+            self.score += 2
 
     def game_over(self) -> None:
         self.state = 1
@@ -71,7 +72,9 @@ def main():
     app.run()
 
 def galaga_timerFired(app) -> None:
-    app.galaga.tick(app)
+    galaga = app.galaga
+    if not galaga.game.regulator.isDebugging:
+        galaga.tick(app)
 
 def testAll() -> None:
     testPosition()

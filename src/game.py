@@ -10,6 +10,8 @@ class GameplayRegulator(object):
         self.danceEveryThisTicks = 4
         # Gameplay parameters
         self.moveShotsByPixels = 4
+        # Debugging
+        self.isDebugging = False
 
     def tick(self) -> None:
         self.timeSinceLevelStart += 1
@@ -104,6 +106,7 @@ class Game(object):
             if not shot.affects_entity_type(collidable_type):
                 continue
             collisionPath = shot.move(self.regulator.moveShotsByPixels)
+            collisionPath.isDebugging = self.regulator.isDebugging
             if shot.position.is_out_of_bounds():
                 self.remove_shot(shot)
                 continue

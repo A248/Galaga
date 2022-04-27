@@ -120,44 +120,54 @@ class LineSegment(object):
         selfCopy.fit_within(((scanMaxX, scanMinX), (scanMaxY, scanMinY)), True)
         return selfCopy
 
-    # Destructive method which fits this segment within the given bounding box
-    def fit_within(self, scanBounds, assertions = False) -> None:
-        ((scanMaxX, scanMinX), (scanMaxY, scanMinY)) = scanBounds
+    # Destructive method which fits this segment within the given image
+    # Returns False if this segment cannot fit
+    def fit_within(self, image) -> bool:
         ((maxX, minX), (maxY, minY)) = self.max_min_bounds()
-        (position1, position2) = (self.position1, self.position2)
-        rightMostPosition = position1 if position1.x == maxX else position2
-        leftMostPosition = position2 if rightMostPosition == position1 else position1
-        if assertions:
-            assert len({rightMostPosition, leftMostPosition}) == 2
+        (imageBoxBottomLeft, imageBoxTopRight) = image.boundingBox
+        if maxX < imageBoxBottomLeft.x or minX > imageBoxTopRight.x:
+            return False
+        if maxY < imageBoxBottomLeft.y or minY > imageBoxTopRight.y:
+            return False
+        upperBoundX = min(maxX, imageBoxTopRight.x)
+        lowerBoundX = max(minX, imageBoxBottomLeft.x)
+        upperBoundY = min(maxY, imageBoxTopRight.y)
+        lowerBoundY = max(minY, imageBoxBottomLeft.y)
         (slope, intercept) = self.slope_and_intercept()
         if slope == None:
             xline = intercept
-            self.position1 = Position(xline, scanMaxY)
-            self.position2 = Position(xline, scanMinY)
-            return self
-        yAtRightMostX = slope * scanMaxX + intercept
-        yAtLeftMostX = slope * scanMinX + intercept
-        if yAtRightMostX <= scanMaxY and yAtRightMostX >= scanMinY:
+            self.position1 = Position(xline, upperBoundY)
+            self.position2 = Position(xline, lowerBoundY)
+            return True
+        (position1, position2) = (self.position1, self.position2)
+        rightMostPosition = position1 if position1.x >= position2.x else position2
+        leftMostPosition = position2 if rightMostPosition == position1 else position1
+        if image.assertions:
+            assert len({rightMostPosition, leftMostPosition}) == 2
+        yAtRightMostX = slope * upperBoundX + intercept
+        yAtLeftMostX = slope * lowerBoundX + intercept
+        if yAtRightMostX <= upperBoundY and yAtRightMostX >= lowerBoundY:
             # Bounded by x on the right
-            rightMostPosition.x = scanMaxX
+            rightMostPosition.x = upperBoundX
             rightMostPosition.y = yAtRightMostX
         else:
             # Bounded by y on the right
             # Determine whether this is an upper or lower bound
-            whichBoundY = scanMaxY if slope > 0 else scanMinY
+            whichBoundY = upperBoundY if slope > 0 else lowerBoundY
             rightMostPosition.y = whichBoundY
             rightMostPosition.x = (whichBoundY - intercept) / slope
-        if yAtLeftMostX <= scanMaxY and yAtLeftMostX >= scanMinY:
+        if yAtLeftMostX <= upperBoundY and yAtLeftMostX >= lowerBoundY:
             # Bounded by x on the left
-            leftMostPosition.x = scanMinX
+            leftMostPosition.x = lowerBoundX
             leftMostPosition.y = yAtLeftMostX
         else:
             # Bounded by y on the left
             # Determine whether this is an upper or lower bound
-            whichBoundY = scanMaxY if slope < 0 else scanMinY
-            leftMostPosition.x = whichBoundY
-            leftMostPosition.y = (whichBoundY - intercept) / slope
-        # All done: self.position1 and self.position 2 were mutated
+            whichBoundY = upperBoundY if slope < 0 else lowerBoundY
+            leftMostPosition.y = whichBoundY
+            leftMostPosition.x = (whichBoundY - intercept) / slope
+        # All done: self.position1 and self.position2 were mutated
+        return True
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, LineSegment):
@@ -172,31 +182,21 @@ class CollisionPath(object):
         self.segment = LineSegment(position1, position2)
 
     def intersects_with_image(self, image) -> bool:
-        imagePosition = image.position
-        (dimensionsWidth, dimensionsHeight) = image.dimensions
-        ((maxX, minX), (maxY, minY)) = self.segment.max_min_bounds()
-        if maxX < imagePosition.x or maxY < imagePosition.y:
-            return False
-        if (minX > (imagePosition.x + dimensionsWidth)
-            or minY > (imagePosition.y + dimensionsHeight)):
-            return False
-        scanMaxX = min(maxX, imagePosition.x + dimensionsWidth)
-        scanMaxY = min(maxY, imagePosition.y + dimensionsHeight)
-        scanMinX = max(minX, imagePosition.x)
-        scanMinY = max(minY, imagePosition.y)
+        image.assertions = self.isDebugging
         # Squeeze the segment to be bounded by the image box
         segment = copy.deepcopy(self.segment)
-        segment.fit_within(((scanMaxX, scanMinX), (scanMaxY, scanMinY)), image.assertions)
+        if not segment.fit_within(image):
+            return False
         # segment is now be bounded by the image box
         ((scanMaxX, scanMinX), (scanMaxY, scanMinY)) = segment.max_min_bounds()
         (slope, intercept) = segment.slope_and_intercept()
         if slope == None:
             scanX = intercept
-            for scanY in range(round(scanMinY), round(scanMaxY)):
+            for scanY in range(math.ceil(scanMinY), math.floor(scanMaxY)):
                 if image.position_is_part_of_image(scanX, scanY):
                     return True
         else:
-            for scanX in range(scanMinX, scanMaxX):
+            for scanX in range(math.ceil(scanMinX), math.floor(scanMaxX)):
                 scanY = slope * scanX + intercept
                 if image.assertions:
                     assert scanY <= scanMaxY and scanY >= scanMinY
@@ -205,23 +205,25 @@ class CollisionPath(object):
         return False
 
 class DrawnImage(object):
-    def __init__(self, position, pilImage, dimensions, backgroundColor, assertions = True):
-        self.position = position
+    def __init__(self, pilImage, boundingBox, backgroundColor, assertions = True):
         self.pilImage = pilImage
-        self.dimensions = dimensions
+        self.boundingBox = boundingBox
         self.backgroundColor = backgroundColor
-        self.assertions = assertions
+        self.assertions = True
 
     def position_is_part_of_image(self, positionX: int, positionY: int) -> bool:
-        (dimensionsWidth, dimensionsHeight) = self.dimensions
-        pixelX = positionX - self.position.x
-        pixelY = positionY - self.position.y
+        image = self.pilImage
+        (boxBottomLeft, boxTopRight) = self.boundingBox
+        (width, height) = (boxTopRight.x - boxBottomLeft.x, boxTopRight.y - boxBottomLeft.y)
+        (imageWidth, imageHeight) = (image.width -1, image.height - 1)
+        (relativeX, relativeY) = (positionX - boxBottomLeft.x, positionY - boxBottomLeft.y)
+        assert relativeX <= width and relativeX >= 0
+        assert relativeY <= height and relativeY >= 0
+        pixelX = (relativeX / width) * imageWidth
+        pixelY = (relativeY / height) * imageHeight
         # Up is down
-        pixelY = dimensionsHeight - pixelY
-        pixelX /= dimensionsWidth
-        pixelY /= dimensionsHeight
-        colorAtPixel = self.pilImage.getpixel((pixelX, pixelY))
-        return colorAtPixel != self.backgroundColor
+        pixelY = imageHeight - pixelY
+        return image.getpixel((pixelX, pixelY)) != self.backgroundColor
 
 # Tests the Position class
 def testPosition() -> None:

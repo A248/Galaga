@@ -30,16 +30,11 @@ class Shape(object):
     def rectangular_dimensions(self):
         return self.dimensions
 
-    def collides_with_path(self, currentPosition, collisionPath) -> bool:
+    def obtain_image_and_background(self):
         pilImage = self.pilImage
         if pilImage == None:
-            # We haven't drawn yet. This can happen in two scenarios:
-            # 1. The game has just begun
-            # 2. We are in an image transition
-            # In either case, the shape hasn't rendered yet
-            return False
-        image = DrawnImage(currentPosition, pilImage, self.dimensions, self.backgroundColor)
-        return collisionPath.intersects_with_image(image)
+            return (None, None)
+        return (pilImage, self.backgroundColor)
 
 class LifeStatus(object):
     MAX_DEATH_ANIMATION = 20
@@ -57,7 +52,8 @@ class LifeStatus(object):
         newAnimationStage = self.deathAnimationTick // self.deathAnimationSpeed
         if (formerAnimationStage != newAnimationStage and
             newAnimationStage < LifeStatus.MAX_DEATH_ANIMATION):
-            shape.set_image_id("death-animations/" + str(1 + newAnimationStage))
+            imageName = "row-" + str(1 + newAnimationStage // 5) + "-column-" + str(1 + newAnimationStage % 5)
+            shape.set_image_id("death-animations/" + imageName)
 
     def is_finished(self):
         animationStage = self.deathAnimationTick // self.deathAnimationSpeed
@@ -81,21 +77,30 @@ class Entity(object):
         if atPosition == None:
             atPosition = self.position
         (boxWidth, boxHeight) = self.shape.rectangular_dimensions()
-        shapeTopLeft = atPosition - Position(boxWidth / 2, boxHeight / 2)
-        shapeBottomRight = shapeTopLeft + Position(boxWidth, boxHeight)
-        return (shapeTopLeft, shapeBottomRight)
+        shapeBottomLeft = atPosition - Position(boxWidth / 2, boxHeight / 2)
+        shapeTopRight = shapeBottomLeft + Position(boxWidth, boxHeight)
+        return (shapeBottomLeft, shapeTopRight)
 
     def collides_with(self, collisionPath) -> bool:
-        return self.shape.collides_with_path(self.position, collisionPath)
+        (pilImage, backgroundColor) = self.shape.obtain_image_and_background()
+        if pilImage == None:
+            # We haven't drawn yet. This can happen in two scenarios:
+            # 1. The game has just begun
+            # 2. We are in an image transition
+            # In either case, the shape hasn't rendered yet
+            return False
+        boundingBox = self.rectangular_bounding_box()
+        image = DrawnImage(pilImage, boundingBox, backgroundColor)
+        return collisionPath.intersects_with_image(image)
 
     def could_be_located_at(self, newPosition) -> None:
-        (shapeTopLeft, shapeBottomRight) = self.rectangular_bounding_box(newPosition)
-        return not (shapeTopLeft.is_out_of_bounds() or shapeBottomRight.is_out_of_bounds())
+        (shapeBottomLeft, shapeTopRight) = self.rectangular_bounding_box(newPosition)
+        return not (shapeBottomLeft.is_out_of_bounds() or shapeTopRight.is_out_of_bounds())
 
     def destroy(self) -> None:
         self.lifeStatus.alive = False
         # From https://www.hiclipart.com/free-transparent-background-png-clipart-beklu
-        self.shape.set_image_id("death-animations/1")
+        self.shape.set_image_id("death-animations/row-1-column-1")
 
     def tick(self) -> None:
         self.lifeStatus.tick_and_adjust_shape(self.shape)
@@ -167,7 +172,9 @@ class Shot(object):
     def draw_on(self, app, canvas) -> None:
         (x1, y1) = self.position.to_canvas_coords(app)
         (x2, y2) = (self.position + Position(1, 1)).to_canvas_coords(app)
-        canvas.create_rectangle(x1, y1, x2, y2, fill = "red", outline = "red")
+        (directionX, directionY) = self.direction
+        color = "red" if directionY <= 0 else "blue"
+        canvas.create_rectangle(x1, y1, x2, y2, fill = color, outline = color)
 
     def tick(self) -> None:
         pass
